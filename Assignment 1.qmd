@@ -1,0 +1,228 @@
+---
+title: "Assignment 1"
+format: 
+  html: 
+    embed-resources: true
+editor: visual
+---
+
+# Due Date
+
+This assignment is due by midnight Pacific Time, September 27th, 2024.
+
+# Learning Goals
+
+-   Download, read, and get familiar with an external dataset.
+-   Step through the EDA "checklist" presented in class
+-   Practice making exploratory plots
+
+# Assignment Description
+
+We will work with air pollution data from the U.S. Environmental Protection Agency (EPA). The EPA has a national monitoring network of air pollution sites that The primary question you will answer is whether daily concentrations of PM$_{2.5}$ (particulate matter air pollution with aerodynamic diameter less than 2.5 $\mu$m) have decreased in California over the last 20 years (from 2002 to 2022).
+
+A primer on particulate matter air pollution can be found [here](https://www.epa.gov/pm-pollution/particulate-matter-pm-basics).
+
+Your assignment should be completed in Quarto or R Markdown.
+
+# Steps
+
+1.  Given the formulated question from the assignment description, you will now conduct EDA Checklist items 2-4. First, download 2002 and 2022 data for all sites in California from the [EPA Air Quality Data website](https://www.epa.gov/outdoor-air-quality-data/download-daily-data). Read in the data using `data.table()`. For each of the two datasets, check the dimensions, headers, footers, variable names and variable types. Check for any data issues, particularly in the key variable we are analyzing. Make sure you write up a summary of all of your findings.
+
+    Read Tables into R
+
+    ```{r}
+    DT2002 <- data.table::fread("ad_viz_plotval_data.csv")
+    DT2022 <- data.table::fread("ad_viz_plotval_data (1).csv")
+    ```
+
+    Check the dimensions, headers, footers, variable names and variable types for 2002
+
+    ```{r}
+    dim(DT2002)
+    head(DT2002)
+    tail(DT2002)
+    str(DT2002)
+    ```
+
+There are 15976 rows and 22 columns for the 2002 data set. The header and footer are properly loaded with no apparent missing data.
+
+Variable names are Date, Source, Site ID, POC, Daily Mean PM2.5 Concentration, Units, Daily AQI Value, Local Site Name, Daily Obs Count, Percent Complete, AQS Parameter Code, AQS, Parameter Description, Method Code, Method Description, CBSA Code, CBSA Name, State FIPS Code, State, County FIPS Code, County, Site Latitude, and Site Longitude.
+
+Categorical variables: Date, Source, Units, Local Site Nemw, AQS Parameter Description, Method Description, CBSA Name, State, and County.
+
+Numeric variables: Site ID, POC, Daily Mean PM2.5 Concentration, Daily AQI Value, Daily Obs Count, Percent Complete, AQS Parameter Code, AQS, Method Code, CBSA Code, State FIPS Code, County FIPS Code, Site Latitude, and Site Longitude.
+
+````         
+Check the dimensions, headers, footers, variable names and variable types for 2022
+
+```{r}
+dim(DT2022)
+head(DT2022)
+tail(DT2022)
+str(DT2022)
+
+```
+````
+
+There are 59756 rows and 22 columns for the 2022 data set. The header and footer are properly loaded with no apparent missing data. All variable names and types are the same as in the 2002 data set.
+
+2.  Combine the two years of data into one data frame. Use the Date variable to create a new column for year, which will serve as an identifier. Change the names of the key variables so that they are easier to refer to in your code.
+
+    ```{r}
+    library(dplyr)
+    # Combine the tables
+    DT <- rbind(DT2002, DT2022)
+
+    # Create a new column for Year
+    DT$Date <- as.Date(DT$Date, format = "%m/%d/%Y")
+    DT$Year <- format(DT$Date, "%Y")
+
+    # Change the names of key variables
+    DT <- DT |>
+      rename("PM2.5" = "Daily Mean PM2.5 Concentration", "lat" = "Site Latitude", "lon" = "Site Longitude")
+    DT$Year <- as.numeric(as.character(DT$Year))
+
+    # Double check variables
+    head(DT)
+    tail(DT)
+    ```
+
+3.  Create a basic map in leaflet() that shows the locations of the sites (make sure to use different colors for each year). Summarize the spatial distribution of the monitoring sites.
+
+    ```{r}
+    library("leaflet")
+    color_palette <- colorNumeric(palette = "viridis", domain = DT$Year)
+    leaflet(DT) |>
+      addProviderTiles('OpenStreetMap') |>
+      addCircles(lat=~lat,
+                 lng=~lon, 
+                 opacity=1, 
+                 fillOpacity=1, 
+                 radius=100, 
+                 color=~color_palette(Year),
+                 fillColor=~color_palette(Year),)
+    ```
+
+Monitoring sites appear to be distributed with a higher density in locations of higher population density. For instance, cities and along the coastline have many more monitoring sites than in the mountain ranges. Specifically, there is a high density around the Bay Area, Los Angeles, and San Diago. This seems logical because we would like to know air pollution levels where people are living and more likely to pollute the air.
+
+4.  Check for any missing or implausible values of PM$_{2.5}$ in the combined dataset. Explore the proportions of each and provide a summary of any temporal patterns you see in these observations.
+
+    ```{r}
+    sum(is.na(DT$PM2.5))
+    # There are no missing values of PM2.5.
+
+    summary(DT$PM2.5)
+    # Set a maximum value of 500 ug/m^3 (as given by the 2012 EPA) and a minimum value of 0:
+    max_PM <- 500
+    min_PM <- 0
+    impossible <- DT$PM2.5[DT$PM2.5 < min_PM | DT$PM2.5 > max_PM]
+    sum_impossible <- length(impossible)
+    print(sum_impossible)
+
+    # It appears that all impossible values are very close to 0, so they will all be set at 0
+    DT_new <- DT
+    DT_new$PM2.5 <- ifelse(DT_new$PM2.5 < 0, 0, DT_new$PM2.5)
+
+    # Find the proportion of impossible data
+    prop <- sum_impossible/length(DT$PM2.5)*100
+    print(prop)
+    # Only 0.284% of the data is impossible
+
+    # Temporal summary
+    temporal <- DT[DT$PM2.5 < 0, .(Count = .N), by = Date]
+    temporal <- temporal[order(-Count)]
+    print(temporal)
+    # All missing values are from 2022
+    ```
+
+5.  Explore the main question of interest at three different spatial levels. Create exploratory plots (e.g. boxplots, histograms, line plots) and summary statistics that best suit each level of data. Be sure to write up explanations of what you observe in these data.
+
+    -   state
+
+        ```{r}
+        DT_new$year <- as.factor(DT_new$Year)
+        library(ggplot2)
+        # Create a histogram
+        ggplot(data = DT_new) + 
+          geom_histogram(aes(x = PM2.5, fill = year)) +
+          labs(title = "PM2.5 by Year in California", x = "PM2.5")
+
+        # Create a box plot
+        ggplot(data = DT_new) + 
+          geom_boxplot(aes(x = year, y = PM2.5, fill = year)) +
+          labs(title = "PM2.5 by Year in California", x = "Year", y = "PM2.5")
+        ```
+
+        ```{r}
+        # Statistical summary of state data
+        State <- DT_new[, .(Mean = mean(PM2.5), Min = min(PM2.5), Max = max(PM2.5), IQR = IQR(PM2.5)), by = Year]
+        print(State)
+        ```
+
+        Overall, the average PM2.5 for the state has decreased with an average PM2.5 of 8.4 in 2022 compared to 16.1 in 2002 and a decreased interquartile range from 13.5 to 6.6, meaning there is less average variation in the 2022 data compared to 2002. There are some counties with much higher, outlying values in 2022, slightly increasing this mean. Therefore, some counties may have worse pollution in 2022 compared to 2002, but the state as a whole has decreased air pollution levels.
+
+    -   county
+
+        ```{r}
+        # Create a bar graph
+        ggplot(data = DT_new, aes(x = County, y = PM2.5, fill = year)) +
+          geom_bar(stat = "identity", position = "dodge") +
+          labs(title = "Pm2.5 Trends by County", x = "County", y= "PM2.5") +
+          coord_flip()
+
+        # Create a heat map
+        ggplot(DT_new, aes(x = year, y = County, fill = PM2.5)) +
+          geom_tile() +
+          scale_fill_gradient(low = "white", high = "red") +
+          labs(title = "PM2.5 2002 and 2022 by County", x = "Year", y = "County")
+        ```
+
+        ```{r}
+        # Statistial summary of county data
+        County_stats <- DT_new |>
+          group_by(year, County) |>
+          summarize(Mean = mean(PM2.5), Max = max(PM2.5), Min = min(PM2.5), .groups = "drop") |>
+          arrange(County)
+        print(County_stats)
+        ```
+
+        Many counties with PM2.5 measurements in both 2002 and 2022 decreased their average PM2.5 values, as seen in the table and charts. Counties with very high PM2.5 values around 300 ug/m\^3, in 2022 identified as outliers at a state level, have relatively low mean values, meaning one timepoint in a few counties are significantly impacting the state PM2.5 values at a state level. Thus, overall, most California counties decreased their average PM2.5 leading to lower air pollution levels in California as a whole.
+
+    -   site in Los Angeles
+
+        ```{r}
+        # Create a new table for LA data
+        LA <- DT_new |>
+        filter(County == "Los Angeles")
+        LA_2002 <- LA |> filter(year == "2002")
+        LA_2022 <- LA |> filter(year == "2022")
+
+        # Create a line plot for LA PM2.5 in 2002 and 2022
+        library(gridExtra)
+        plot_2002 <- ggplot(LA_2002, aes(x = Date, y = PM2.5)) +
+          geom_line(color = "blue") +
+          geom_point(color = "blue") +
+          labs(title = "Change in PM2.5 in Los Angeles in 2002", x = "Date in 2002", y = "PM2.5")
+        plot_2022 <- ggplot(LA_2022, aes(x = Date, y = PM2.5)) +
+          geom_line(color = "red") +
+          geom_point(color = "red") +
+          labs(title = "Change in PM2.5 in Los Angeles in 2022", x = "Date in 2022", y = "PM2.5")
+        grid.arrange(plot_2002, plot_2022, ncol = 2)
+
+        # Create a box plot for 2002 and 2022
+        ggplot(LA, aes(x = year, y = PM2.5)) +
+          geom_boxplot(fill = "lightblue", color = "black") +
+          labs(title = "PM2.5 Levels in Los Angeles in 2002 vs 2022", x = "Year", y = "PM2.5")
+        ```
+
+    ```{r}
+    # Statistical summary of LA data
+    LA_stats <- LA[, .(Mean = mean(PM2.5), Min = min(PM2.5), Max = max(PM2.5), IQR = IQR(PM2.5)), by = year]
+    print(LA_stats)
+    ```
+
+    Los Angeles significantly decreased PM2.5 levels in 2022 compared to 2002 with lower mean levels, 11 ug/m^3^ in 2022 vs 20 ug/m\^3 in 2002, and less variation with an IQR of 14.4 in 2002 and 6.3 in 2022. Additionally, unlike some other counties, even the high outliers decreased between 2002 and 2022 with a decreased maximum PM2.5 value of 72.4 in 2002 to 56.0 in 2022. Therefore, Los Angeles county shows decreased air pollution values in 2022 compared to 2002, which is impressive for such a large and populated region.
+
+------------------------------------------------------------------------
+
+This homework has been adapted from the [case study](https://bookdown.org/rdpeng/exdata/data-analysis-case-study-changes-in-fine-particle-air-pollution-in-the-u-s-.html) in Roger Peng's [Exploratory Data Analysis with R](https://bookdown.org/rdpeng/exdata/)
